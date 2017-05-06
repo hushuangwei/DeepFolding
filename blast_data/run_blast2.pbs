@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -S /bin/bash
+#PBS -l nodes=1:ppn=8
+#PBS -l walltime=10:00:00
+#PBS -l pmem=1000mb
+
+cd $PBS_O_WORKDIR
+echo "Current working directory is `pwd`"
+echo "Node file: $PBS_NODEFILE :"
+echo "---------------------"
+cat $PBS_NODEFILE
+echo "---------------------"
+PBS_NP=`/bin/awk 'END {print NR}' $PBS_NODEFILE`
+echo "Running on $PBS_NP processors."
+
+echo "Starting run at: `date`"
+pdbname1=($pdbname)
+#blastp -query 1abs.fasta -db nr -evalue 1e-5 -num_threads 8
+for i in {0..9}
+do
+psiblast -query ../PDBs_fasta/${pdbname1[$i]}.fasta -db nr -num_iterations=3 -evalue=0.001 -num_alignments 5000 -out psiblastDsbAOut_${pdbname1[$i]} -out_pssm=PSSMDsbA_${pdbname1[$i]} -out_ascii_pssm=PSSM_${pdbname1[$i]} -num_threads 8
+done
+echo "Job3 finished at: `date`"
