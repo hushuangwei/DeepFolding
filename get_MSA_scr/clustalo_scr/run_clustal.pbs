@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -S /bin/bash
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=10:00:00
+
+cd $PBS_O_WORKDIR
+echo "Current working directory is `pwd`"
+echo "Node file: $PBS_NODEFILE :"
+echo "---------------------"
+cat $PBS_NODEFILE
+echo "---------------------"
+PBS_NP=`/bin/awk 'END {print NR}' $PBS_NODEFILE`
+echo "Running on $PBS_NP processors."
+
+echo "Starting run at: `date`"
+
+Seq_Path="/home/xubiao/scratch/blast_test/extract_seq/mview-master/seqs";
+output="clustalo_output"
+mkdir -p $output
+
+pdbname1=($pdbname)
+#blastp -query 1abs.fasta -db nr -evalue 1e-5 -num_threads 8
+for i in ${pdbname1[@]}
+do
+name1=${Seq_Path}/$i
+if [ -e $name1 ];then
+echo $name1
+./clustalo-1.2.4-Ubuntu-x86_64 -i $name1 -o ${output}/$i
+fi
+done
+echo "Job3 finished at: `date`"
