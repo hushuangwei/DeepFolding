@@ -1,1 +1,2 @@
 Calculate contact map from PDB.
+The missing coordinates of the fasta sequence including N and C terminals are labeled by nan.
