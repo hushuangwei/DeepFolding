@@ -1,8 +1,14 @@
 clc
 clear all
-list=importdata('total_list');
-!mkdir -p result_test
+% PDB.SrcPath = 'PDBs';
+% PDB.SrcFile = dir(fullfile(PDB.SrcPath, '*.pdb'));
+% PDB.SrcFile = {PDB.SrcFile.name};
+% % %
+% % %
+% list=PDB.SrcFile;
+!mkdir -p coords_refined
 %problematic_pdbs=[];
+list=importdata('total_list_test');
 count=0;
 count_good=0;
 aa = containers.Map;
@@ -28,9 +34,12 @@ aa('TYR')='Y';
 aa('VAL')='V';
 
 
+
+% %
+
 for pdbid=1:length(list)
 PDB_struct = pdbread(list{pdbid});
-pdbname=list{pdbid};
+pdbname=list{pdbid}
 pdbname=pdbname(10:13)
 PDB_struct_ref = pdbread(['PDBs/' pdbname '.pdb']);
 seq_ref=PDB_struct_ref.Sequence.Sequence;
@@ -45,8 +54,8 @@ skip_resnum=0;
 i=1;
 while i<=8
     if strcmp(PDB_struct.Model.Atom(i+skip_resnum).AtomName,'CA') 
-        count_seq=count_seq+1;
-    resname=PDB_struct.Model.Atom(i+skip_resnum).resName;
+        count_seq=count_seq+1
+        resname=PDB_struct.Model.Atom(i+skip_resnum).resName
     if  ~isKey(aa,resname) || PDB_struct.Model.Atom(i+skip_resnum).resSeq-PDB_struct.Model.Atom(i+skip_resnum).resSeq~=0
         skip_resnum=skip_resnum+1;
         count_seq=0;
@@ -55,7 +64,7 @@ while i<=8
     end
 %     resname
 %     aa(resname)
-    coor_seq_init(count_seq)=aa(resname);
+    coor_seq_init(count_seq)=aa(resname)
     end
     i=i+1;
 end
@@ -101,11 +110,11 @@ if break_flag==1
     problematic_pdbs{count}={pdbname};
     continue;
 end
-D=CalculateDistanceMatrix(coord);
-if any(isnan(D))
-dlmwrite(['result_test/' pdbname '_star.txt'],D,'delimiter','\t')
-else
-dlmwrite(['result_test/' pdbname '.txt'],D,'delimiter','\t')
-end
+% D=CalculateDistanceMatrix(coord);
+ if any(isnan(coord))
+    dlmwrite(['coords_refined/' pdbname '_star.txt'],coord,'delimiter','\t')
+ else
+    dlmwrite(['coords_refined/' pdbname '.txt'],coord,'delimiter','\t')
+ end
 %break
 end
