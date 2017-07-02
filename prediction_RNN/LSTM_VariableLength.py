@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 
 #%% hyperparameters
 BATCH_START = 0
-MAX_STEPS = 20  ## variant in different batches
-BATCH_SIZE = 50
+MAX_STEPS = 20  ## number of residues, this should be variant in different batches
+BATCH_SIZE = 50 ## number of proteins, this should be variant in different bathses
 INPUT_SIZE = 2   ##
 OUTPUT_SIZE = 2  ## angles
 CELL_SIZE = 64
@@ -114,7 +114,7 @@ class LSTMRNN(object):
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(self.cell_size, forget_bias=1.0, state_is_tuple=True)
         # create initial state as tuple:(batch_size, cell_size, ?)
         with tf.name_scope('initial_state'):
-            self.cell_init_state = lstm_cell.zero_state(self.batch_size, dtype=tf.float32)
+            self.cell_init_state = lstm_cell.zero_state(self.batch_size, dtype=tf.float32) # NOTE:explicitly use batch_size
         # creates a recurrent neural network specified by RNNCell --> https://www.tensorflow.org/api_docs/python/tf/nn/dynamic_rnn
         self.cell_outputs, self.cell_final_state = tf.nn.dynamic_rnn(
                 lstm_cell, self.l_in_y, initial_state=self.cell_init_state, time_major=False, sequence_length=length(self.xs))
@@ -213,22 +213,28 @@ if __name__ == '__main__':
     plt.ion()
     plt.show()
     
-    num_run = 100
-    steps = np.random.randint(MAX_STEPS//3)
+    # total number of runs
+    num_run = 200
+    # number of time steps in each run
+    steps = np.random.randint(MAX_STEPS//3, MAX_STEPS+1, num_run)
     
     for i in range(num_run):
         # obtain one batch
-        seq, res, xs = get_batch() #
+        seq, res, xs = get_batch(timeSteps=steps[i])
+        # padding to max_steps
+        seq_padding = np.append(seq, np.zeros([BATCH_SIZE, MAX_STEPS-steps[i], INPUT_SIZE]), axis=1)
+        res_padding = np.append(res, np.zeros([BATCH_SIZE, MAX_STEPS-steps[i], OUTPUT_SIZE]), axis=1)
+        
         # create the feed_dict
         if i == 0:
             feed_dict = {
-                    model.xs:seq,
-                    model.ys:res
+                    model.xs:seq_padding,
+                    model.ys:res_padding
                     } # the first input, no need to input initial_state
         else:
             feed_dict = {
-                    model.xs:seq,
-                    model.ys:res,
+                    model.xs:seq_padding,
+                    model.ys:res_padding,
                     model.cell_init_state:state # update current state
                     }
         # run one step of training
@@ -237,11 +243,13 @@ if __name__ == '__main__':
                 feed_dict=feed_dict)
         # plotting
         plt.subplot(211)
-        plt.plot(xs[0,:], res[0,:,0].flatten(), 'r', xs[0,:], pred[:,0].flatten()[:MAX_STEPS], 'b--')
+        plt.plot(xs[0,:], res[0,:,0].flatten(), 'r', xs[0,:], pred[:,0].flatten()[:steps[i]], 'b--')
         plt.ylim((-4, 4))
+        plt.ylabel('output_feature_1')
         plt.subplot(212)
-        plt.plot(xs[0,:], res[0,:,1].flatten(), 'r', xs[0,:], pred[:,1].flatten()[:MAX_STEPS], 'b--')
+        plt.plot(xs[0,:], res[0,:,1].flatten(), 'r', xs[0,:], pred[:,1].flatten()[:steps[i]], 'b--')
         plt.ylim((-2, 2))
+        plt.ylabel('output_feature_2')
         plt.draw()
         plt.pause(0.3)
         # write to log
@@ -250,6 +258,4 @@ if __name__ == '__main__':
             result = sess.run(merged, feed_dict)
             writer.add_summary(result, i)
         
-
-
 
