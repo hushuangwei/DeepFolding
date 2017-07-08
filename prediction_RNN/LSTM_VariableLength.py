@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 
 
 #%% hyperparameters
-BATCH_SIZE = 50 ## number of proteins, this should be variant in different bathses
+BATCH_SIZE = 50 ## number of proteins
 
-MAX_STEPS = 200  ## number of residues, this should be variant in different batches
+MAX_STEPS = 200  ## number of residues
 INPUT_SIZE = 2   ## number of features for input, such as MSA information ...
 OUTPUT_SIZE = 2  ## number of labels for output, such as Ramachandran angles ...
 CELL_SIZE = 64 ## size of cell
@@ -23,7 +23,6 @@ CELL_SIZE = 64 ## size of cell
 LR = 0.006 ## learning rate
 
 BATCH_START = 0
-BATCH_START_TEST = 0
 
 
 #%% ===========================================================================
@@ -80,11 +79,13 @@ class LSTMRNN(object):
             self.xs = tf.placeholder(tf.float32, [None, max_steps, input_size], name='xs')
             # placeholder for output: (batch_size, max_steps, output_size)
             self.ys = tf.placeholder(tf.float32, [None, max_steps, output_size], name='ys')
+            # placeholder for learing rate
+            self.learning_rate = tf.placeholder(tf.float32, name='learning_rate') # shape in placeholder?
         # variables for input hidden layer
-        with tf.variable_scope('in_hidden'):
-            self.add_input_layer()
+        # tf.variable_scope('in_hidden'):
+        #    self.add_input_layer()
         # variables for LSTM cell # NOTE: modified into multilayers!
-        with tf.variable_scope('LSTM_cell'):
+        with tf.variable_scope('LSTM_layer'):
             self.add_lstm_layer()
         # variables for output hidden layer
         with tf.variable_scope('out_hidden'):
@@ -94,7 +95,7 @@ class LSTMRNN(object):
             self.compute_cost_length() #self.compute_cost()
         # train optimizer
         with tf.name_scope('train'):
-            self.train_op = tf.train.AdamOptimizer(LR).minimize(self.cost)
+            self.train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.cost)
     
     # add one input hidden layer
     def add_input_layer(self):
@@ -116,11 +117,13 @@ class LSTMRNN(object):
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(self.cell_size, forget_bias=1.0, state_is_tuple=True)
         # create initial state as tuple:(batch_size, cell_size, ?)
         with tf.name_scope('initial_state'):
-            self.cell_init_state = lstm_cell.zero_state(tf.shape(self.xs)[0], dtype=tf.float32) # NOTE:explicitly use batch_size
+            self.cell_init_state = lstm_cell.zero_state(tf.shape(self.xs)[0], dtype=tf.float32)
         # creates a recurrent neural network specified by RNNCell --> https://www.tensorflow.org/api_docs/python/tf/nn/dynamic_rnn
+        #self.cell_outputs, self.cell_final_state = tf.nn.dynamic_rnn(
+        #        lstm_cell, self.l_in_y, initial_state=self.cell_init_state, time_major=False, sequence_length=length(self.xs))
         self.cell_outputs, self.cell_final_state = tf.nn.dynamic_rnn(
-                lstm_cell, self.l_in_y, initial_state=self.cell_init_state, time_major=False, sequence_length=length(self.xs))
-    
+                lstm_cell, self.xs, initial_state=self.cell_init_state, time_major=False, sequence_length=length(self.xs))
+
     # add one output hidden layer
     def add_output_layer(self):
         # (batch_size, max_steps, cell_size) ==> (batch_size*max_steps, cell_size)
@@ -152,7 +155,7 @@ class LSTMRNN(object):
         with tf.name_scope('average_cost'):
             self.cost = tf.reduce_mean(losses, name='average_cost_per_batch')
         # record cost into summary
-        tf.summary.scalar('cost', self.cost)
+        tf.summary.scalar('cost_by_length', self.cost)
         
     # compute cost function
     def compute_cost(self):
@@ -179,7 +182,8 @@ class LSTMRNN(object):
     
     # weights: initialized with normal distribution
     def _weight_variable(self, shape, name='weights'):
-        initializer = tf.random_normal_initializer(mean=0., stddev=1.,)
+        #initializer = tf.random_normal_initializer(mean=0., stddev=1.,)
+        initializer = tf.contrib.layers.xavier_initializer()
         # details of get_variable() --> https://www.tensorflow.org/programmers_guide/variable_scope
         return tf.get_variable(shape=shape, initializer=initializer, name=name)
     
@@ -193,7 +197,7 @@ class LSTMRNN(object):
 #%%
 if __name__ == '__main__':
     # create an instance of LSTMRNN
-    model = LSTMRNN(MAX_STEPS, INPUT_SIZE, OUTPUT_SIZE, CELL_SIZE)
+    model = LSTMRNN(MAX_STEPS, INPUT_SIZE, OUTPUT_SIZE, CELL_SIZE) # 封装
     
     # create a session
     sess = tf.Session()
@@ -227,7 +231,8 @@ if __name__ == '__main__':
         # create the feed_dict
         feed_dict = {
                     model.xs:seq_padding,
-                    model.ys:res_padding
+                    model.ys:res_padding,
+                    model.learning_rate:LR
                     }
 
         # run one step of training
