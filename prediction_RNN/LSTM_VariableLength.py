@@ -13,13 +13,16 @@ import matplotlib.pyplot as plt
 
 
 #%% hyperparameters
-BATCH_START = 0
-MAX_STEPS = 20  ## number of residues, this should be variant in different batches
 BATCH_SIZE = 50 ## number of proteins, this should be variant in different bathses
-INPUT_SIZE = 2   ##
-OUTPUT_SIZE = 2  ## angles
-CELL_SIZE = 64
-LR = 0.006
+
+MAX_STEPS = 200  ## number of residues, this should be variant in different batches
+INPUT_SIZE = 2   ## number of features for input, such as MSA information ...
+OUTPUT_SIZE = 2  ## number of labels for output, such as Ramachandran angles ...
+CELL_SIZE = 64 ## size of cell
+
+LR = 0.006 ## learning rate
+
+BATCH_START = 0
 BATCH_START_TEST = 0
 
 
@@ -66,12 +69,11 @@ def length(sequence):
 # define class for LSTMRNN for variable length sequence
 class LSTMRNN(object):
     # initializer
-    def __init__(self, max_steps, input_size, output_size, cell_size, batch_size):
+    def __init__(self, max_steps, input_size, output_size, cell_size):
         self.max_steps = max_steps
         self.input_size = input_size
         self.output_size = output_size
         self.cell_size = cell_size
-        self.batch_size = batch_size
         # placeholders for inputs
         with tf.name_scope('inputs'):
             # placeholder for input: (batch_size, max_steps, input_size)
@@ -83,7 +85,7 @@ class LSTMRNN(object):
             self.add_input_layer()
         # variables for LSTM cell # NOTE: modified into multilayers!
         with tf.variable_scope('LSTM_cell'):
-            self.add_cell()
+            self.add_lstm_layer()
         # variables for output hidden layer
         with tf.variable_scope('out_hidden'):
             self.add_output_layer()
@@ -109,12 +111,12 @@ class LSTMRNN(object):
         self.l_in_y = tf.reshape(l_in_y, [-1, self.max_steps, self.cell_size], name='2_3D')
     
     # add one LSTM-RNN cell: (batch_size, max_steps, cell_size) -> (batch_size, max_steps, cell_size)
-    def add_cell(self):
+    def add_lstm_layer(self):
         # create basic LSTM cell --> http://arxiv.org/abs/1409.2329
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(self.cell_size, forget_bias=1.0, state_is_tuple=True)
         # create initial state as tuple:(batch_size, cell_size, ?)
         with tf.name_scope('initial_state'):
-            self.cell_init_state = lstm_cell.zero_state(self.batch_size, dtype=tf.float32) # NOTE:explicitly use batch_size
+            self.cell_init_state = lstm_cell.zero_state(tf.shape(self.xs)[0], dtype=tf.float32) # NOTE:explicitly use batch_size
         # creates a recurrent neural network specified by RNNCell --> https://www.tensorflow.org/api_docs/python/tf/nn/dynamic_rnn
         self.cell_outputs, self.cell_final_state = tf.nn.dynamic_rnn(
                 lstm_cell, self.l_in_y, initial_state=self.cell_init_state, time_major=False, sequence_length=length(self.xs))
@@ -148,10 +150,7 @@ class LSTMRNN(object):
                             name='average_losses_per_seq') 
         # average loses over batch
         with tf.name_scope('average_cost'):
-            self.cost = tf.div(
-                    tf.reduce_sum(losses, name='losses_sum'), # sum over batches
-                    self.batch_size,
-                    name='average_cost_per_batch')
+            self.cost = tf.reduce_mean(losses, name='average_cost_per_batch')
         # record cost into summary
         tf.summary.scalar('cost', self.cost)
         
@@ -161,7 +160,7 @@ class LSTMRNN(object):
         losses = tf.contrib.legacy_seq2seq.sequence_loss_by_example(
                 [tf.reshape(self.pred, [-1], name='reshape_pred')],
                 [tf.reshape(self.ys, [-1], name='reshape_target')],
-                [tf.ones([self.batch_size * self.max_steps * self.output_size], dtype=tf.float32)],
+                [tf.ones([tf.shape(self.xs)[0] * self.max_steps * self.output_size], dtype=tf.float32)],
                 average_across_timesteps=True,
                 softmax_loss_function=self.ms_error,
                 name='losses')
@@ -169,7 +168,7 @@ class LSTMRNN(object):
         with tf.name_scope('average_cost'):
             self.cost = tf.div(
                     tf.reduce_sum(losses, name='losses_sum'),
-                    self.batch_size,
+                    tf.shape(self.xs)[0],
                     name='average_cost')
         # record cost into summary
         tf.summary.scalar('cost', self.cost)
@@ -194,7 +193,7 @@ class LSTMRNN(object):
 #%%
 if __name__ == '__main__':
     # create an instance of LSTMRNN
-    model = LSTMRNN(MAX_STEPS, INPUT_SIZE, OUTPUT_SIZE, CELL_SIZE, BATCH_SIZE)
+    model = LSTMRNN(MAX_STEPS, INPUT_SIZE, OUTPUT_SIZE, CELL_SIZE)
     
     # create a session
     sess = tf.Session()
@@ -214,7 +213,7 @@ if __name__ == '__main__':
     plt.show()
     
     # total number of runs
-    num_run = 200
+    num_run = 100
     # number of time steps in each run
     steps = np.random.randint(MAX_STEPS//3, MAX_STEPS+1, num_run)
     
@@ -226,17 +225,11 @@ if __name__ == '__main__':
         res_padding = np.append(res, np.zeros([BATCH_SIZE, MAX_STEPS-steps[i], OUTPUT_SIZE]), axis=1)
         
         # create the feed_dict
-        if i == 0:
-            feed_dict = {
+        feed_dict = {
                     model.xs:seq_padding,
                     model.ys:res_padding
-                    } # the first input, no need to input initial_state
-        else:
-            feed_dict = {
-                    model.xs:seq_padding,
-                    model.ys:res_padding,
-                    model.cell_init_state:state # update current state
                     }
+
         # run one step of training
         _, cost, state, pred = sess.run(
                 [model.train_op, model.cost, model.cell_final_state, model.pred],
@@ -257,5 +250,14 @@ if __name__ == '__main__':
             print('cost: ', round(cost, 4))
             result = sess.run(merged, feed_dict)
             writer.add_summary(result, i)
-        
-
+    
+    
+    ## test model
+    test_seq, test_res, test_xs = get_batch(timeSteps=200)
+    test_seq = test_seq[0:1,:]
+    test_res = test_res[0:1,:]
+    test_xs = test_xs[0,:]
+    test_pred = sess.run(model.pred, feed_dict={model.xs:test_seq, model.ys:test_res})
+    test_accuracy = np.mean(np.square(test_res[0,:,:]-test_pred), axis=0)
+    print(test_accuracy)
+    
